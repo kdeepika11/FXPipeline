@@ -1,0 +1,41 @@
+{
+	"name": "ds_adls_bronze_fx_json",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "ls_adls_stassetlakehouse",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"p_folder": {
+				"type": "string"
+			},
+			"p_file": {
+				"type": "string"
+			},
+			"p_container": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"type": "Json",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobFSLocation",
+				"fileName": {
+					"value": "@dataset().p_file",
+					"type": "Expression"
+				},
+				"folderPath": {
+					"value": "@dataset().p_folder",
+					"type": "Expression"
+				},
+				"fileSystem": {
+					"value": "@dataset().p_container",
+					"type": "Expression"
+				}
+			}
+		},
+		"schema": {}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}

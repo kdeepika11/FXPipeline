@@ -1,0 +1,9 @@
+{
+	"name": "adf-asset-services",
+	"location": "eastus",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "20c04e6d-532b-4435-a19d-06026502561f",
+		"tenantId": "077171c6-d967-4e99-866a-72072721e6cd"
+	}
+}

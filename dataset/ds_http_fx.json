@@ -1,0 +1,27 @@
+{
+	"name": "ds_http_fx",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "ls_http_frankfurter",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"p_relative_url": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"type": "Json",
+		"typeProperties": {
+			"location": {
+				"type": "HttpServerLocation",
+				"relativeUrl": {
+					"value": "@dataset().p_relative_url",
+					"type": "Expression"
+				}
+			}
+		},
+		"schema": {}
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}
