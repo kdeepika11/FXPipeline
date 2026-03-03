@@ -5,7 +5,14 @@
 			{
 				"name": "v_relative_url",
 				"type": "SetVariable",
-				"dependsOn": [],
+				"dependsOn": [
+					{
+						"activity": "v_symbols_clean",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
 				"policy": {
 					"secureOutput": false,
 					"secureInput": false
@@ -14,7 +21,7 @@
 				"typeProperties": {
 					"variableName": "v_relative_url",
 					"value": {
-						"value": "@concat(pipeline().parameters.p_run_date,\n        '?from=', pipeline().parameters.p_base_ccy,\n        '&to=', pipeline().parameters.p_symbols)",
+						"value": "@concat(pipeline().parameters.p_run_date,\n        '?from=', pipeline().parameters.p_base_ccy,\n        '&to=', variables('v_symbols_clean'))",
 						"type": "Expression"
 					}
 				}
@@ -22,7 +29,14 @@
 			{
 				"name": "v_target_folder",
 				"type": "SetVariable",
-				"dependsOn": [],
+				"dependsOn": [
+					{
+						"activity": "v_relative_url",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
 				"policy": {
 					"secureOutput": false,
 					"secureInput": false
@@ -39,7 +53,14 @@
 			{
 				"name": "v_target_file",
 				"type": "SetVariable",
-				"dependsOn": [],
+				"dependsOn": [
+					{
+						"activity": "v_target_folder",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
 				"policy": {
 					"secureOutput": false,
 					"secureInput": false
@@ -56,7 +77,14 @@
 			{
 				"name": "cp_http_to_bronze",
 				"type": "Copy",
-				"dependsOn": [],
+				"dependsOn": [
+					{
+						"activity": "v_target_file",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
 				"policy": {
 					"timeout": "0.12:00:00",
 					"retry": 3,
@@ -130,6 +158,61 @@
 						}
 					}
 				]
+			},
+			{
+				"name": "v_symbols_clean",
+				"type": "SetVariable",
+				"dependsOn": [],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "v_symbols_clean",
+					"value": "@replace(replace(trim(pipeline().parameters.p_symbols), ' ', ''), '.', '')"
+				}
+			},
+			{
+				"name": "DataBricksJob",
+				"type": "DatabricksJob",
+				"dependsOn": [
+					{
+						"activity": "cp_http_to_bronze",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"jobId": "692966998594981",
+					"jobParameters": {
+						"run_date": {
+							"value": "@pipeline().parameters.p_run_date",
+							"type": "Expression"
+						},
+						"base_ccy": {
+							"value": "@pipeline().parameters.p_base_ccy",
+							"type": "Expression"
+						},
+						"symbols": {
+							"value": "@pipeline().parameters.p_symbols",
+							"type": "Expression"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "ADLinkedService",
+					"type": "LinkedServiceReference"
+				}
 			}
 		],
 		"parameters": {
@@ -143,7 +226,7 @@
 			},
 			"p_run_date": {
 				"type": "string",
-				"defaultValue": "@formatDateTime(addDays(utcNow(),-1),'yyyy-MM-dd')"
+				"defaultValue": "2026-03-02"
 			}
 		},
 		"variables": {
@@ -154,6 +237,9 @@
 				"type": "String"
 			},
 			"v_target_file": {
+				"type": "String"
+			},
+			"v_symbols_clean": {
 				"type": "String"
 			}
 		},
