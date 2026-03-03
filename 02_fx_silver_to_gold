@@ -1,0 +1,35 @@
+from pyspark.sql import functions as F
+
+dbutils.widgets.text("p_run_date","")
+dbutils.widgets.text("p_base_ccy","USD")
+dbutils.widgets.text("p_required_symbols", "EUR,GBP,JPY,CHF,CAD,AUD,USD")
+dbutils.widgets.text("p_run_id","")
+run_date = dbutils.widgets.get("p_run_date")
+base_ccy = dbutils.widgets.get("p_base_ccy").upper()
+required=[x.strip() for x in dbutils.widgets.get("p_required_symbols").split(',') if x.strip()]
+run_id = dbutils.widgets.get("p_run_id") or "manual"
+
+if not run_date:
+    raise ValueError("p_run_date is required (yyyy-MM-dd)")
+
+silver = (spark.table("silver.fx_rates")
+          .where((F.col("rate_date") == F.to_date(F.lit(run_date))) & (F.col("base_ccy") == base_ccy)))
+
+display(silver)
+
+max_ingest = silver.agg(F.max("ingest_ts").alias("m")).collect()[0]["m"]
+
+display(max_ingest)
+
+gold = (silver
+        .withColumn("is_required_ccy", F.col("quote_ccy").isin(required))
+        .withColumn("freshness_hours",
+                    (F.unix_timestamp(F.current_timestamp()) - F.unix_timestamp(F.lit(max_ingest))) / 3600.0)
+        .withColumn("run_id", F.lit(run_id))
+        .withColumn("run_ts", F.current_timestamp())
+        .select("rate_date","base_ccy","quote_ccy","fx_rate","ingest_ts","freshness_hours","is_required_ccy","run_id","run_ts")
+       )
+display(gold)
+gold_path="abfss://gold@stassetlakehouse.dfs.core.windows.net/fx_rates/"
+gold.write.mode("append").saveAsTable("gold.fx_rates")
+gold.write.mode("append").save(gold_path)
