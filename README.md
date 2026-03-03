@@ -327,3 +327,11 @@ ORDER BY run_ts DESC, quote_ccy;
 
 SELECT * FROM assetlakehouse_dev.meta.dq_run_results
 ORDER BY run_ts DESC;
+
+**ADF Pipeline**
+<img width="1204" height="573" alt="image" src="https://github.com/user-attachments/assets/31bde9c1-603b-43dd-b0e8-ca48eebdf97d" />
+
+**DataBricksWorkflow**
+<img width="1080" height="561" alt="image" src="https://github.com/user-attachments/assets/1f1086b0-3913-4763-81dd-1962a7f34a3f" />
+
+
