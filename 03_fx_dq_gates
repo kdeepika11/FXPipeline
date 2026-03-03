@@ -1,0 +1,63 @@
+from pyspark.sql import functions as F
+
+dbutils.widgets.text("p_run_date", "")
+dbutils.widgets.text("p_base_ccy", "USD")
+dbutils.widgets.text("p_required_symbols", "EUR,GBP,JPY,CHF,CAD,AUD,USD")
+dbutils.widgets.text("p_run_id", "")
+
+run_date = dbutils.widgets.get("p_run_date")
+base_ccy = dbutils.widgets.get("p_base_ccy").upper()
+required = [c.strip().upper() for c in dbutils.widgets.get("p_required_symbols").split(",") if c.strip()]
+run_id = dbutils.widgets.get("p_run_id") or "manual"
+
+if not run_date:
+    raise ValueError("p_run_date is required (yyyy-MM-dd)")
+
+spark.sql("""
+CREATE TABLE IF NOT EXISTS meta.dq_run_results (
+  run_id STRING,
+  check_name STRING,
+  severity STRING,
+  passed BOOLEAN,
+  failed_count BIGINT,
+  run_ts TIMESTAMP,
+  details STRING
+) USING DELTA
+""")
+
+df = (spark.table("gold.fx_rates")
+      .where((F.col("rate_date") == F.to_date(F.lit(run_date))) & (F.col("base_ccy") == base_ccy)))
+
+def log_check(name, severity, failed_count, details=""):
+    passed = (failed_count == 0)
+    out = spark.createDataFrame(
+        [(run_id, name, severity, passed, int(failed_count), details)],
+        ["run_id","check_name","severity","passed","failed_count","details"]
+    ).withColumn("run_ts", F.current_timestamp())
+    out.write.format("delta").mode("append").saveAsTable("meta.dq_run_results")
+    return passed
+
+# 1) No nulls
+null_fail = df.where(
+    F.col("rate_date").isNull() | F.col("base_ccy").isNull() | F.col("quote_ccy").isNull() | F.col("fx_rate").isNull()
+).count()
+p1 = log_check("no_nulls_keys_rate", "CRITICAL", null_fail)
+
+# 2) fx_rate > 0
+neg_fail = df.where(F.col("fx_rate") <= 0).count()
+p2 = log_check("fx_rate_positive", "CRITICAL", neg_fail)
+
+# 3) Required currencies present
+present = set([r["quote_ccy"] for r in df.select("quote_ccy").distinct().collect()])
+missing = sorted(list(set(required) - present))
+p3 = log_check("required_ccy_present", "CRITICAL", 0 if len(missing)==0 else len(missing), "missing=" + ",".join(missing))
+
+# 4) Freshness (warn if > 24 hours)
+fh = df.agg(F.max("freshness_hours").alias("fh")).collect()[0]["fh"]
+fresh_fail = 1 if (fh is None or fh > 24.0) else 0
+p4 = log_check("freshness_hours_le_24", "WARN", fresh_fail, f"freshness_hours={fh}")
+
+#if not (p1 and p2 and p3):
+#    raise Exception("DQ Gate failed: CRITICAL checks failed. See meta.dq_run_results")
+#else:
+#    print("DQ Gate passed (CRITICAL).")
