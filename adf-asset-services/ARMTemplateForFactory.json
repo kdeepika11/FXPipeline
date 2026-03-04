@@ -1,0 +1,439 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"type": "string",
+			"metadata": "Data Factory name",
+			"defaultValue": "adf-asset-services"
+		},
+		"ADLinkedService_accessToken": {
+			"type": "secureString",
+			"metadata": "Secure string for 'accessToken' of 'ADLinkedService'"
+		},
+		"ls_adb_assetlakehouse_accessToken": {
+			"type": "secureString",
+			"metadata": "Secure string for 'accessToken' of 'ls_adb_assetlakehouse'"
+		},
+		"ADLinkedService_properties_typeProperties_existingClusterId": {
+			"type": "string",
+			"defaultValue": "0302-013530-jo0pxc4i"
+		},
+		"ls_adls_stassetlakehouse_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://stassetlakehouse.dfs.core.windows.net/"
+		},
+		"ls_http_frankfurter_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://api.frankfurter.dev/v1/"
+		}
+	},
+	"variables": {
+		"factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]"
+	},
+	"resources": [
+		{
+			"name": "[concat(parameters('factoryName'), '/pl_ingest_fx_to_bronze')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "v_relative_url",
+						"type": "SetVariable",
+						"dependsOn": [
+							{
+								"activity": "v_symbols_clean",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"variableName": "v_relative_url",
+							"value": {
+								"value": "@concat(pipeline().parameters.p_run_date,\n        '?from=', pipeline().parameters.p_base_ccy,\n        '&to=', variables('v_symbols_clean'))",
+								"type": "Expression"
+							}
+						}
+					},
+					{
+						"name": "v_target_folder",
+						"type": "SetVariable",
+						"dependsOn": [
+							{
+								"activity": "v_relative_url",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"variableName": "v_target_folder",
+							"value": {
+								"value": "@concat('fx_rates/base=', pipeline().parameters.p_base_ccy,\n        '/run_date=', pipeline().parameters.p_run_date, '/')",
+								"type": "Expression"
+							}
+						}
+					},
+					{
+						"name": "v_target_file",
+						"type": "SetVariable",
+						"dependsOn": [
+							{
+								"activity": "v_target_folder",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"variableName": "v_target_file",
+							"value": {
+								"value": "@concat('fx_rates_', pipeline().parameters.p_base_ccy, '_',\n        pipeline().parameters.p_run_date, '.json')",
+								"type": "Expression"
+							}
+						}
+					},
+					{
+						"name": "cp_http_to_bronze",
+						"type": "Copy",
+						"dependsOn": [
+							{
+								"activity": "v_target_file",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 3,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "JsonSource",
+								"storeSettings": {
+									"type": "HttpReadSettings",
+									"requestMethod": "GET"
+								},
+								"formatSettings": {
+									"type": "JsonReadSettings"
+								}
+							},
+							"sink": {
+								"type": "JsonSink",
+								"storeSettings": {
+									"type": "AzureBlobFSWriteSettings"
+								},
+								"formatSettings": {
+									"type": "JsonWriteSettings"
+								}
+							},
+							"enableStaging": false,
+							"enableSkipIncompatibleRow": true,
+							"logSettings": {
+								"enableCopyActivityLog": true,
+								"copyActivityLogSettings": {
+									"logLevel": "Warning",
+									"enableReliableLogging": false
+								},
+								"logLocationSettings": {
+									"linkedServiceName": {
+										"referenceName": "ls_adls_stassetlakehouse",
+										"type": "LinkedServiceReference"
+									}
+								}
+							}
+						},
+						"inputs": [
+							{
+								"referenceName": "ds_http_fx",
+								"type": "DatasetReference",
+								"parameters": {
+									"p_relative_url": {
+										"value": "@variables('v_relative_url')",
+										"type": "Expression"
+									}
+								}
+							}
+						],
+						"outputs": [
+							{
+								"referenceName": "ds_adls_bronze_fx_json",
+								"type": "DatasetReference",
+								"parameters": {
+									"p_folder": {
+										"value": "@variables('v_target_folder')",
+										"type": "Expression"
+									},
+									"p_file": {
+										"value": "@variables('v_target_file')",
+										"type": "Expression"
+									},
+									"p_container": "bronze"
+								}
+							}
+						]
+					},
+					{
+						"name": "v_symbols_clean",
+						"type": "SetVariable",
+						"dependsOn": [],
+						"policy": {
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"variableName": "v_symbols_clean",
+							"value": {
+								"value": "@replace(replace(trim(pipeline().parameters.p_symbols), ' ', ''), '.', '')",
+								"type": "Expression"
+							}
+						}
+					},
+					{
+						"name": "DataBricksJob",
+						"type": "DatabricksJob",
+						"dependsOn": [
+							{
+								"activity": "cp_http_to_bronze",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"jobId": "692966998594981",
+							"jobParameters": {
+								"run_date": {
+									"value": "@pipeline().parameters.p_run_date",
+									"type": "Expression"
+								},
+								"base_ccy": {
+									"value": "@pipeline().parameters.p_base_ccy",
+									"type": "Expression"
+								},
+								"symbols": {
+									"value": "@pipeline().parameters.p_symbols",
+									"type": "Expression"
+								}
+							}
+						},
+						"linkedServiceName": {
+							"referenceName": "ADLinkedService",
+							"type": "LinkedServiceReference"
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"p_base_ccy": {
+						"type": "string",
+						"defaultValue": "USD"
+					},
+					"p_symbols": {
+						"type": "string",
+						"defaultValue": "EUR,GBP,JPY,CHF,CAD,AUD,USD"
+					},
+					"p_run_date": {
+						"type": "string",
+						"defaultValue": "2026-03-02"
+					}
+				},
+				"variables": {
+					"v_relative_url": {
+						"type": "String"
+					},
+					"v_target_folder": {
+						"type": "String"
+					},
+					"v_target_file": {
+						"type": "String"
+					},
+					"v_symbols_clean": {
+						"type": "String"
+					}
+				},
+				"annotations": [],
+				"lastPublishTime": "2026-03-02T17:29:03Z"
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/ds_http_fx')]",
+				"[concat(variables('factoryId'), '/datasets/ds_adls_bronze_fx_json')]",
+				"[concat(variables('factoryId'), '/linkedServices/ADLinkedService')]",
+				"[concat(variables('factoryId'), '/linkedServices/ls_adls_stassetlakehouse')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ds_adls_bronze_fx_json')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "ls_adls_stassetlakehouse",
+					"type": "LinkedServiceReference"
+				},
+				"parameters": {
+					"p_folder": {
+						"type": "string"
+					},
+					"p_file": {
+						"type": "string"
+					},
+					"p_container": {
+						"type": "string"
+					}
+				},
+				"annotations": [],
+				"type": "Json",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobFSLocation",
+						"fileName": {
+							"value": "@dataset().p_file",
+							"type": "Expression"
+						},
+						"folderPath": {
+							"value": "@dataset().p_folder",
+							"type": "Expression"
+						},
+						"fileSystem": {
+							"value": "@dataset().p_container",
+							"type": "Expression"
+						}
+					}
+				},
+				"schema": {}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/ls_adls_stassetlakehouse')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ds_http_fx')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "ls_http_frankfurter",
+					"type": "LinkedServiceReference"
+				},
+				"parameters": {
+					"p_relative_url": {
+						"type": "string"
+					}
+				},
+				"annotations": [],
+				"type": "Json",
+				"typeProperties": {
+					"location": {
+						"type": "HttpServerLocation",
+						"relativeUrl": {
+							"value": "@dataset().p_relative_url",
+							"type": "Expression"
+						}
+					}
+				},
+				"schema": {}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/ls_http_frankfurter')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ADLinkedService')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureDatabricks",
+				"typeProperties": {
+					"domain": "https://adb-7405618690395532.12.azuredatabricks.net",
+					"accessToken": {
+						"type": "SecureString",
+						"value": "[parameters('ADLinkedService_accessToken')]"
+					},
+					"existingClusterId": "[parameters('ADLinkedService_properties_typeProperties_existingClusterId')]"
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ls_adb_assetlakehouse')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureDatabricksDeltaLake",
+				"typeProperties": {
+					"domain": "https://adb-7405618690395532.12.azuredatabricks.net",
+					"clusterId": "0302-013530-jo0pxc4i",
+					"accessToken": {
+						"type": "SecureString",
+						"value": "[parameters('ls_adb_assetlakehouse_accessToken')]"
+					}
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ls_adls_stassetlakehouse')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('ls_adls_stassetlakehouse_properties_typeProperties_url')]"
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/ls_http_frankfurter')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "HttpServer",
+				"typeProperties": {
+					"url": "[parameters('ls_http_frankfurter_properties_typeProperties_url')]",
+					"enableServerCertificateValidation": true,
+					"authenticationType": "Anonymous"
+				}
+			},
+			"dependsOn": []
+		}
+	]
+}

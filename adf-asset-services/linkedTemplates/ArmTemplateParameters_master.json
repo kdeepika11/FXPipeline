@@ -1,0 +1,30 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"value": "adf-asset-services"
+		},
+		"ADLinkedService_accessToken": {
+			"value": ""
+		},
+		"ls_adb_assetlakehouse_accessToken": {
+			"value": ""
+		},
+		"ADLinkedService_properties_typeProperties_existingClusterId": {
+			"value": "0302-013530-jo0pxc4i"
+		},
+		"ls_adls_stassetlakehouse_properties_typeProperties_url": {
+			"value": "https://stassetlakehouse.dfs.core.windows.net/"
+		},
+		"ls_http_frankfurter_properties_typeProperties_url": {
+			"value": "https://api.frankfurter.dev/v1/"
+		},
+		"containerUri": {
+			"value": ""
+		},
+		"containerSasToken": {
+			"value": ""
+		}
+	}
+}
